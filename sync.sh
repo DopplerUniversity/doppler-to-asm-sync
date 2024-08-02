@@ -74,13 +74,21 @@ function handler () {
     fi
   fi
 
+  # Extract the AWS secret region from the ARN. We use this to specify the region
+  # when executing the AWS CLI command in case the secret is in another region.
+  aws_region=$(echo "$AWS_SECRET_ARN" | cut -d: -f4)
+  if [ -z "${aws_region+x}" ]; then
+    echo "AWS region could not be determined from the ARN"
+    exit 1
+  fi
+
   # Convert secret names to lowercase and replaces `_` with `-`. You can replace
   # any character with another here as desired. If multiple characters need to be
   # replaced use a regular expression like `gsub("[_:]";"-")`
   transformed_secrets_json=$(echo "$secrets_json" | jq -c 'del(.AWS_SECRET_ARN, .DOPPLER_PROJECT, .DOPPLER_CONFIG, .DOPPLER_ENVIRONMENT) | with_entries(.key |= (ascii_downcase | gsub("_";"-")))')
 
   # Update the secret value in AWS Secrets Manager
-  aws secretsmanager put-secret-value --secret-id "$AWS_SECRET_ARN" --secret-string "$transformed_secrets_json" > /dev/null
+  aws secretsmanager put-secret-value --region "$aws_region" --secret-id "$AWS_SECRET_ARN" --secret-string "$transformed_secrets_json" > /dev/null
 
   RESPONSE="{\"statusCode\": 200, \"body\": \"{ \"message\": \"Secrets updated\", \"doppler_project\": \"${DOPPLER_PROJECT:-$webhook_project}\", \"doppler_config\": \"${DOPPLER_CONFIG:-$webhook_config}\", \"doppler_webhook\": \"$webhook\", \"aws_secret_arn\": \"${AWS_SECRET_ARN}\" }\"}"
   echo $RESPONSE
